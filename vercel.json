@@ -1,0 +1,20 @@
+# vercel.json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ],
+  "env": {
+    "BOT_TOKEN": "TON_TOKEN_BOT_TELEGRAM",
+    "CHAT_ID": "TON_ID_TELEGRAM"
+  }
+}
