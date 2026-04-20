@@ -1,4 +1,3 @@
-# api/index.py
 from flask import Flask, request, jsonify, render_template_string
 import requests
 import json
@@ -10,8 +9,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ========== CONFIGURATION TELEGRAM ==========
-BOT_TOKEN = "TON_TOKEN_BOT_TELEGRAM"
-CHAT_ID = "TON_ID_TELEGRAM"
+BOT_TOKEN = "8662380005:AAEJdWB3kvuIk-2dnq_xZ93EjDU4LT0lP9o"
+CHAT_ID = "8546452645"
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 TELEGRAM_PHOTO_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
